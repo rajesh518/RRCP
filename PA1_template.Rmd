@@ -1,0 +1,120 @@
+---
+title: "jan13.Rmd"
+author: "Rajesh"
+date: "January 13, 2017"
+output:
+     html_document:
+       keep_md: true
+
+---
+
+```{r setup,include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+getting the data and loading it into R
+
+```{r, echo=TRUE}
+if(!file.exists("data")){dir.create("data")}
+fileurl <- "https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip"
+download.file(fileurl,destfile = "./data.zip",method="auto")
+unzip(zipfile = "./data.zip")
+data1 <- read.csv("./activity.csv",header = T,colClasses = c("integer", "character", "integer"),na.strings="NA")
+library(markdown)
+```
+
+```{r}
+library(lubridate)
+data1$date <- ymd(data1$date)
+dim(data1)
+names(data1)
+head(data1)
+```
+
+
+## Including Plots
+
+### plot for 'Histogram of the total number of steps taken each day'
+```{r}
+library(dplyr)
+everydaysteps <- data1 %>%
+  filter(!is.na(steps)) %>%
+  group_by(date) %>%
+  summarize(steps = sum(steps)) %>%
+  print
+library(ggplot2)
+ggplot(everydaysteps, aes(x = steps)) +
+  geom_histogram(fill = "firebrick", binwidth = 1000) +
+  labs(title = "Histogram of Steps per day", x = "Steps per day", y = "Frequency")
+```
+
+###Mean and median number of steps taken each day
+```{r}
+mean(everydaysteps$steps, na.rm=TRUE)
+median(everydaysteps$steps, na.rm=TRUE)
+```
+
+###Time series plot of the average number of steps taken
+find the average number of steps for each 5 minute
+```{r}
+intervalsteps <- aggregate(steps ~ interval, data1,na.rm=T, mean)
+names(intervalsteps)
+names(intervalsteps)[2]
+names(intervalsteps)[2] <- "average_steps"##changing the column name
+g <- ggplot(intervalsteps,aes(interval,average_steps))
+g+geom_line(col = "steelblue")+labs(x= "5-minute interval")+labs(y = "average number of steps taken")
+```
+###The 5-minute interval that, on average, contains the maximum number of steps
+```{r}
+intervalsteps[which.max(intervalsteps$average_steps),]
+```
+###Code to describe and show a strategy for imputing missing dat
+to know how many missing values
+```{r}
+missing <- is.na(data1$steps)
+table(missing)
+```
+###Histogram of the total number of steps taken each day after missing values are imputed
+first,create the new dataset with NA filled
+```{r}
+imputeddata <- merge(data1, intervalsteps, by = 'interval', all.y = F)
+imputeddata$steps[is.na(imputeddata$steps)] <- as.integer(
+        round(imputeddata$average_steps[is.na(imputeddata$steps)]))
+keeps <- names(data1)
+imputeddata <- imputeddata[keeps]
+```
+next,plot the histogram
+```{r}
+neweverydaysteps <- aggregate(steps ~ date, imputeddata, sum)##to plot the histogram,we need to find total number of steps##
+head(neweverydaysteps)
+names(neweverydaysteps)[2] <- "sum_steps"
+qplot(sum_steps,data = neweverydaysteps,binwidth = 750,xlab = "Total number of steps taken per each day")
+mean(neweverydaysteps$sum_steps)
+median(neweverydaysteps$sum_steps)
+```
+Note:
+Based on the imputed data set, the new mean is 10766.19 and the new median is 10765 . Compare with the original mean 10765.64 and median 10762 , the mean  and the median has a small change.  One possible explanation is that when we fill the missing data for the intervals, we use means for intervals, so we have more data close or identical to the means, and median is shifted and becomes identical to the mean.
+
+The impact of imputing missing data on the estimates of the total daily number of steps is also clear: now we have higher frquency counts in the histogram at the center region (close to the mean).
+
+###Panel plot comparing the average number of steps taken per 5-minute interval across weekdays and weekends
+first,Create a new factor variable in the dataset with two levels - "weekday" and "weekend'
+```{r}
+newdata <- imputeddata##create the new dataframe
+weekend <- weekdays(as.Date(newdata$date)) %in% c("Saturday", "Sunday")
+newdata$daytype <- "weekday"##fill in weekday column
+newdata$daytype[weekend == TRUE] <- "weekend"##replace the weekday column with weekend where daytype ==sat/sun
+newdata$daytype <- as.factor(newdata$daytype)##convert to factor variable
+dim(newdata)##check the dimensions of the newdata
+str(newdata)
+head(newdata)
+class(newdata$daytype)##double check
+```
+Make the panel plot
+```{r}
+newinterval <- aggregate(steps ~ interval + daytype, newdata, mean)
+head(newinterval)
+ names(newinterval)[3] <- "mean_steps"##change the column name
+qplot(interval,mean_steps,data=newinterval,facets = daytype~.,geom = "path", xlab = "5 minute interval",ylab ="averaged across all weekday days or weekend days")
+```
+
